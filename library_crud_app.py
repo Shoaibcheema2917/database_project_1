@@ -1,62 +1,129 @@
+import sys
 import sqlite3
-import tkinter as tk
-from tkinter import messagebox
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QLabel, QLineEdit, QPushButton,
+    QTextEdit, QVBoxLayout, QHBoxLayout, QMessageBox, QFormLayout
+)
 
+# --- Database Setup ---
 conn = sqlite3.connect("library.db")
 cursor = conn.cursor()
 cursor.execute("""CREATE TABLE IF NOT EXISTS Books (
-    book_id INTEGER PRIMARY KEY,
-    title TEXT,
-    author TEXT,
-    genre TEXT,
-    availability_status TEXT
+    book_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL,
+    genre TEXT NOT NULL,
+    availability_status TEXT NOT NULL
 )""")
 conn.commit()
 
-def add_book():
-    cursor.execute("INSERT INTO Books (title, author, genre, availability_status) VALUES (?, ?, ?, ?)",
-                   (title_entry.get(), author_entry.get(), genre_entry.get(), status_entry.get()))
-    conn.commit()
-    messagebox.showinfo("Success", "Book added!")
+class LibraryApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Library CRUD App (PyQt5)")
+        self.setGeometry(100, 100, 600, 500)
+        self.init_ui()
 
-def view_books():
-    cursor.execute("SELECT * FROM Books")
-    books = cursor.fetchall()
-    output.delete(1.0, tk.END)
-    for book in books:
-        output.insert(tk.END, str(book) + "\n")
+    def init_ui(self):
+        # --- Form Layout for Inputs ---
+        form_layout = QFormLayout()
 
-def delete_book():
-    cursor.execute("DELETE FROM Books WHERE book_id=?", (delete_entry.get(),))
-    conn.commit()
-    messagebox.showinfo("Deleted", "Book deleted!")
+        self.title_input = QLineEdit()
+        self.author_input = QLineEdit()
+        self.genre_input = QLineEdit()
+        self.status_input = QLineEdit()
 
-root = tk.Tk()
-root.title("Library CRUD App")
+        form_layout.addRow("Title:", self.title_input)
+        form_layout.addRow("Author:", self.author_input)
+        form_layout.addRow("Genre:", self.genre_input)
+        form_layout.addRow("Status:", self.status_input)
 
-tk.Label(root, text="Title").grid(row=0, column=0)
-tk.Label(root, text="Author").grid(row=1, column=0)
-tk.Label(root, text="Genre").grid(row=2, column=0)
-tk.Label(root, text="Status").grid(row=3, column=0)
+        # --- Buttons ---
+        self.add_btn = QPushButton("Add Book")
+        self.add_btn.clicked.connect(self.add_book)
 
-title_entry = tk.Entry(root)
-author_entry = tk.Entry(root)
-genre_entry = tk.Entry(root)
-status_entry = tk.Entry(root)
+        self.delete_id_input = QLineEdit()
+        form_layout.addRow("Book ID to Delete:", self.delete_id_input)
 
-title_entry.grid(row=0, column=1)
-author_entry.grid(row=1, column=1)
-genre_entry.grid(row=2, column=1)
-status_entry.grid(row=3, column=1)
+        self.delete_btn = QPushButton("Delete Book")
+        self.delete_btn.clicked.connect(self.delete_book)
 
-tk.Button(root, text="Add Book", command=add_book).grid(row=4, column=0, columnspan=2)
-tk.Label(root, text="Book ID to Delete").grid(row=5, column=0)
-delete_entry = tk.Entry(root)
-delete_entry.grid(row=5, column=1)
-tk.Button(root, text="Delete Book", command=delete_book).grid(row=6, column=0, columnspan=2)
-tk.Button(root, text="View All Books", command=view_books).grid(row=7, column=0, columnspan=2)
+        self.view_btn = QPushButton("View All Books")
+        self.view_btn.clicked.connect(self.view_books)
 
-output = tk.Text(root, height=10, width=50)
-output.grid(row=8, column=0, columnspan=2)
+        # --- Output Area ---
+        self.output = QTextEdit()
+        self.output.setReadOnly(True)
 
-root.mainloop()
+        # --- Layout Composition ---
+        vbox = QVBoxLayout()
+        vbox.addLayout(form_layout)
+
+        hbox = QHBoxLayout()
+        hbox.addWidget(self.add_btn)
+        hbox.addWidget(self.delete_btn)
+        hbox.addWidget(self.view_btn)
+        vbox.addLayout(hbox)
+
+        vbox.addWidget(QLabel("Library Records:"))
+        vbox.addWidget(self.output)
+
+        self.setLayout(vbox)
+
+    def add_book(self):
+        title = self.title_input.text().strip()
+        author = self.author_input.text().strip()
+        genre = self.genre_input.text().strip()
+        status = self.status_input.text().strip()
+
+        if not (title and author and genre and status):
+            QMessageBox.critical(self, "Input Error", "All fields are required.")
+            return
+
+        cursor.execute("INSERT INTO Books (title, author, genre, availability_status) VALUES (?, ?, ?, ?)",
+                       (title, author, genre, status))
+        conn.commit()
+        QMessageBox.information(self, "Success", "Book added successfully.")
+        self.clear_inputs()
+
+    def view_books(self):
+        cursor.execute("SELECT * FROM Books")
+        books = cursor.fetchall()
+        self.output.clear()
+        if books:
+            for book in books:
+                self.output.append(f"ID: {book[0]}, Title: {book[1]}, Author: {book[2]}, Genre: {book[3]}, Status: {book[4]}")
+        else:
+            self.output.append("No books found.")
+
+    def delete_book(self):
+        book_id = self.delete_id_input.text().strip()
+        if not book_id.isdigit():
+            QMessageBox.critical(self, "Input Error", "Please enter a valid numeric Book ID.")
+            return
+
+        cursor.execute("SELECT * FROM Books WHERE book_id=?", (book_id,))
+        if cursor.fetchone() is None:
+            QMessageBox.warning(self, "Not Found", f"No book found with ID {book_id}.")
+            return
+
+        cursor.execute("DELETE FROM Books WHERE book_id=?", (book_id,))
+        conn.commit()
+        QMessageBox.information(self, "Deleted", f"Book with ID {book_id} deleted.")
+        self.delete_id_input.clear()
+
+    def clear_inputs(self):
+        self.title_input.clear()
+        self.author_input.clear()
+        self.genre_input.clear()
+        self.status_input.clear()
+
+    def closeEvent(self, event):
+        conn.close()
+        event.accept()
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = LibraryApp()
+    window.show()
+    sys.exit(app.exec_())
